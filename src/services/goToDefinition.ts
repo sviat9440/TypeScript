@@ -26,10 +26,22 @@ namespace ts.GoToDefinition {
             return label ? [createDefinitionInfoFromName(typeChecker, label, ScriptElementKind.label, node.text, /*containerName*/ undefined!)] : undefined; // TODO: GH#18217
         }
 
-        if (node.kind === SyntaxKind.ReturnKeyword) {
-            const functionDeclaration = findAncestor(node.parent, n =>
-                isClassStaticBlockDeclaration(n) ? "quit" : isFunctionLikeDeclaration(n)) as FunctionLikeDeclaration | undefined;
-            return functionDeclaration ? [createDefinitionFromSignatureDeclaration(typeChecker, functionDeclaration)] : undefined;
+        switch (node.kind) {
+            case SyntaxKind.ReturnKeyword:
+                const functionDeclaration = findAncestor(node.parent, n =>
+                  isClassStaticBlockDeclaration(n) ? "quit" : isFunctionLikeDeclaration(n)) as FunctionLikeDeclaration | undefined;
+                return functionDeclaration ? [createDefinitionFromSignatureDeclaration(typeChecker, functionDeclaration)] : undefined;
+            case SyntaxKind.DefaultKeyword:
+                if (!isDefaultClause(node.parent)) {
+                    break;
+                }
+                // falls through
+            case SyntaxKind.CaseKeyword:
+                const switchStatement = findAncestor(node.parent, isSwitchStatement);
+                if (switchStatement) {
+                    return [createDefinitionInfoFromNode(switchStatement, "switch")];
+                }
+                break;
         }
 
         if (isStaticModifier(node) && isClassStaticBlockDeclaration(node.parent)) {
@@ -509,5 +521,22 @@ namespace ts.GoToDefinition {
             default:
                 return false;
         }
+    }
+
+    function createDefinitionInfoFromNode(node: Node, name: string): DefinitionInfo {
+        const sourceFile = node.getSourceFile();
+        return {
+            fileName: sourceFile.fileName,
+            textSpan: createTextSpanFromNode(node, sourceFile),
+            kind: ScriptElementKind.label,
+            name,
+            containerKind: ScriptElementKind.unknown,
+            containerName: "",
+            contextSpan: createTextSpanFromNode(node, sourceFile),
+            isLocal: false,
+            isAmbient: false,
+            unverified: false,
+            failedAliasResolution: undefined,
+        };
     }
 }
