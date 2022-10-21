@@ -39,7 +39,25 @@ namespace ts.GoToDefinition {
             case SyntaxKind.CaseKeyword:
                 const switchStatement = findAncestor(node.parent, isSwitchStatement);
                 if (switchStatement) {
-                    return [createDefinitionInfoFromNode(switchStatement, "switch")];
+                    return [createDefinitionInfoFromNode(switchStatement)];
+                }
+                break;
+            case SyntaxKind.BreakKeyword:
+            case SyntaxKind.ContinueKeyword:
+                const breakStatement = node.parent as BreakStatement | ContinueStatement;
+                const { label } = breakStatement;
+                if (label) {
+                    const labelStatement = findAncestor(node.parent, n => isLabeledStatement(n) && n.label.text === label.text);
+                    if (labelStatement) {
+                        return [createDefinitionInfoFromNode(labelStatement)];
+                    }
+                } else {
+                    const statement = node.kind === SyntaxKind.BreakKeyword
+                        ? findAncestor(node.parent, n => isSwitchStatement(n) || isLoopStatement(n))
+                        : findAncestor(node.parent, isLoopStatement);
+                    if (statement) {
+                        return [createDefinitionInfoFromNode(statement)];
+                    }
                 }
                 break;
         }
@@ -523,7 +541,16 @@ namespace ts.GoToDefinition {
         }
     }
 
-    function createDefinitionInfoFromNode(node: Node, name: string): DefinitionInfo {
+    const kindNames: Partial<Record<SyntaxKind, string>> = {
+        [SyntaxKind.LabeledStatement]: 'label',
+        [SyntaxKind.SwitchStatement]: 'switch',
+        [SyntaxKind.ForStatement]: 'for',
+        [SyntaxKind.ForInStatement]: 'for-in',
+        [SyntaxKind.ForOfStatement]: 'for-of',
+        [SyntaxKind.WhileStatement]: 'while',
+    }
+
+    function createDefinitionInfoFromNode(node: Node, name: string = kindNames[node.kind] || ''): DefinitionInfo {
         const sourceFile = node.getSourceFile();
         return {
             fileName: sourceFile.fileName,
@@ -538,5 +565,9 @@ namespace ts.GoToDefinition {
             unverified: false,
             failedAliasResolution: undefined,
         };
+    }
+
+    function isLoopStatement(node: Node): node is WhileStatement | ForStatement | ForInStatement | ForOfStatement {
+        return isWhileStatement(node) || isForStatement(node) || isForInStatement(node) || isForOfStatement(node);
     }
 }
